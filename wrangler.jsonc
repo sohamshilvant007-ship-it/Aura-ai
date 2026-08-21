@@ -9,8 +9,11 @@
     "directory": "public",
     "binding": "ASSETS"
   },
-  "build": {
-    "command": "npm run build",
-    "watch_paths": ["src/**/*.js"]
+  "env": {
+    "production": {
+      "vars": {
+        "ENVIRONMENT": "production"
+      }
+    }
   }
 }
