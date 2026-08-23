@@ -16,6 +16,15 @@ export default {
       try {
         const body = await request.json();
         const userMessage = body.message || "";
+        const imageDataUrl = body.image || null;
+
+        const parts = [{ text: userMessage }];
+        if (imageDataUrl) {
+          const match = imageDataUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+          if (match) {
+            parts.push({ inline_data: { mime_type: match[1], data: match[2] } });
+          }
+        }
 
         const geminiRes = await fetch(
           "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
@@ -26,7 +35,7 @@ export default {
               "x-goog-api-key": env.GEMINI_API_KEY,
             },
             body: JSON.stringify({
-              contents: [{ role: "user", parts: [{ text: userMessage }] }],
+              contents: [{ role: "user", parts }],
               systemInstruction: {
                 parts: [{ text: "Tum Aura ho, ek friendly AI assistant jo Hinglish mein natural, chhote jawab deta hai." }]
               }
@@ -524,6 +533,20 @@ export default {
     <div id="waveform">
       <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
     </div>
+    <input type="file" id="livePhotoInput" accept="image/*" capture="environment" style="display:none;">
+    <input type="file" id="liveVideoInput" accept="video/*" capture="environment" style="display:none;">
+    <button class="round" id="photoBtn" title="Live Photo" onclick="document.getElementById('livePhotoInput').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+    </button>
+    <button class="round" id="videoBtn" title="Live Video" onclick="document.getElementById('liveVideoInput').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="23 7 16 12 23 17 23 7"/>
+        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+      </svg>
+    </button>
     <button class="round" id="micBtn" title="Bol kar bhejo">
       <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -862,6 +885,80 @@ async function handleUserMessageInner(text) {
 }
 
 sendBtn.addEventListener("click", () => handleUserMessage(textInput.value));
+
+// ------------------------------------------------------------------
+// Live Photo / Live Video — camera se photo/video kheecho, Aura ko
+// dikhao, AI (Gemini vision) usko dekh ke jawab deta hai
+// ------------------------------------------------------------------
+const livePhotoInput = document.getElementById("livePhotoInput");
+const liveVideoInput = document.getElementById("liveVideoInput");
+
+function fileToDataUrl(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function addImageMessage(dataUrl, sender){
+  const row = document.createElement("div");
+  row.className = "row " + sender;
+  const bubble = document.createElement("div");
+  bubble.className = "msg";
+  const img = document.createElement("img");
+  img.src = dataUrl;
+  img.style.cssText = "max-width:100%;border-radius:10px;display:block;";
+  bubble.appendChild(img);
+  row.appendChild(bubble);
+  chatBox.appendChild(row);
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+function addVideoMessage(dataUrl, sender){
+  const row = document.createElement("div");
+  row.className = "row " + sender;
+  const bubble = document.createElement("div");
+  bubble.className = "msg";
+  const vid = document.createElement("video");
+  vid.src = dataUrl; vid.controls = true;
+  vid.style.cssText = "max-width:100%;border-radius:10px;display:block;";
+  bubble.appendChild(vid);
+  row.appendChild(bubble);
+  chatBox.appendChild(row);
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+livePhotoInput.addEventListener("change", async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const dataUrl = await fileToDataUrl(file);
+  addImageMessage(dataUrl, "user");
+  livePhotoInput.value = "";
+  showTyping();
+  try{
+    const res = await fetch(\`\${BACKEND_URL}/api/chat\`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Is photo mein kya hai? Batao.", image: dataUrl })
+    });
+    const data = await res.json();
+    hideTyping();
+    addMessage(data?.reply || "Photo dekh nahi paya, dobara try karo.", "bot");
+  }catch(err){
+    hideTyping();
+    addMessage("Photo bhejne mein dikkat hui — internet check karo.", "bot");
+  }
+});
+
+liveVideoInput.addEventListener("change", async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const dataUrl = await fileToDataUrl(file);
+  addVideoMessage(dataUrl, "user");
+  liveVideoInput.value = "";
+  addMessage("Video mil gayi! (Abhi video ko main dekh nahi sakta, lekin future mein isko bhi samajh paunga 🙂)", "bot");
+});
 textInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") handleUserMessage(textInput.value);
 });
