@@ -16,52 +16,34 @@ export default {
       try {
         const body = await request.json();
         const userMessage = body.message || "";
-        const systemPrompt = "Tum Aura ho, ek friendly AI assistant jo Hinglish mein natural, chhote jawab deta hai.";
 
-        // LAYER 1: Gemini AI try karo
-        let reply = null;
-        try {
-          const geminiRes = await fetch(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-goog-api-key": env.GEMINI_API_KEY,
-              },
-              body: JSON.stringify({
-                contents: [{ role: "user", parts: [{ text: userMessage }] }],
-                systemInstruction: { parts: [{ text: systemPrompt }] }
-              })
-            }
-          );
-          const data = await geminiRes.json();
-          reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
-        } catch (e) { reply = null; }
+        const geminiRes = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": env.GEMINI_API_KEY,
+            },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ text: userMessage }] }],
+              systemInstruction: {
+                parts: [{ text: "Tum Aura ho, ek friendly AI assistant jo Hinglish mein natural, chhote jawab deta hai." }]
+              }
+            })
+          }
+        );
+        const data = await geminiRes.json();
+        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
 
-        // LAYER 2: Gemini fail/limit khatam -> Cloudflare ka apna AI (Workers AI)
-        if (!reply && env.AI) {
-          try {
-            const cfResult = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userMessage }
-              ]
-            });
-            reply = cfResult?.response || null;
-          } catch (e) { reply = null; }
-        }
-
-        if (!reply) {
-          reply = "Maaf karo, abhi dono AI (Gemini + Cloudflare) jawab nahi de paye. Thodi der baad try karo.";
-        }
-
+        // Agar Gemini se sahi jawab nahi mila (limit khatam, error, etc.) to
+        // "reply" ko null hi rehne do -> Aura khud (apna gyaan + Wikipedia) jawab dega
         return new Response(JSON.stringify({ reply }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       } catch (err) {
-        return new Response(JSON.stringify({ reply: "Error: " + err.message }), {
-          status: 500,
+        // Yahan bhi reply na bhejo, taaki Aura khud fallback kare
+        return new Response(JSON.stringify({ reply: null }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
